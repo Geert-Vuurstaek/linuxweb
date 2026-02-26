@@ -56,3 +56,7 @@ data:
             target_label: __address__
             regex: (.+)(?::\d+);(\d+)
             replacement: $1:$2
+
+        - job_name: node-exporter
+          static_configs:
+            - targets: ["node-exporter.gv-monitoring.svc.cluster.local:9100"]
