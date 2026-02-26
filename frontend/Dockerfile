@@ -1,3 +1,4 @@
-FROM nginx:1.27-alpine
+FROM httpd:2.4-alpine
 
-COPY index.html /usr/share/nginx/html/index.html
+# Copy static files to Apache's web root
+COPY index.html /usr/local/apache2/htdocs/

@@ -31,7 +31,7 @@ services:
 
   gv-frontend:
     build: ./frontend
-    image: gv-frontend:1.0
+    image: frontend-apache
     container_name: gv-frontend
     depends_on:
       - gv-api
