@@ -80,6 +80,8 @@ Projectstructuur:
     - service.yaml
   - argocd/
     - application.yaml
+    - monitoring-prometheus.yaml
+    - monitoring-grafana.yaml
   - metallb/
     - ip-pool.yaml
 - docker-compose.yaml
@@ -276,7 +278,11 @@ ArgoCD wordt met Helm geinstalleerd en volgt een Git repo voor automatische depl
 5) Applicatie registreren
 - kubectl apply -f k8s/argocd/application.yaml
 
-6) GitOps workflow
+6) Monitoring registreren (aparte apps)
+- kubectl apply -f k8s/argocd/monitoring-prometheus.yaml
+- kubectl apply -f k8s/argocd/monitoring-grafana.yaml
+
+7) GitOps workflow
 - Elke wijziging in de repo (k8s/) wordt automatisch toegepast door ArgoCD.
 - `syncPolicy.automated` zorgt voor auto-sync + self-heal.
 
