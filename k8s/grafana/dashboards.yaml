@@ -15,3 +15,20 @@ data:
         editable: true
         options:
           path: /var/lib/grafana/dashboards
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gv-grafana-dashboards
+  namespace: gv-monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: gv-default
+        orgId: 1
+        folder: ""
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards

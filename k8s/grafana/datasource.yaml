@@ -14,3 +14,19 @@ data:
         access: proxy
         url: http://gv-prometheus.gv-monitoring.svc.cluster.local:9090
         isDefault: true
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gv-grafana-datasource
+  namespace: gv-monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://gv-prometheus.gv-monitoring.svc.cluster.local:9090
+        isDefault: true
