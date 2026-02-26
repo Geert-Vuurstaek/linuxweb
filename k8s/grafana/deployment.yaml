@@ -18,9 +18,17 @@ spec:
           image: grafana/grafana:10.4.5
           ports:
             - containerPort: 3000
-          envFrom:
-            - secretRef:
-                name: gv-grafana-admin
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: gv-grafana-admin
+                  key: GF_SECURITY_ADMIN_USER
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gv-grafana-admin
+                  key: GF_SECURITY_ADMIN_PASSWORD
           volumeMounts:
             - name: gv-grafana-datasource
               mountPath: /etc/grafana/provisioning/datasources
