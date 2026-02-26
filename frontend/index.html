@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Milestone 2</title>
+  </head>
+  <body>
+    <h1><span id="user">Loading...</span> has reached milestone 2!</h1>
+    <p>API container: <span id="container">Loading...</span></p>
+
+    <script>
+      const apiBase = "/api";
+
+      function fetchJson(path) {
+        return fetch(`${apiBase}${path}`).then((res) => {
+          if (!res.ok) {
+            throw new Error("Request failed");
+          }
+          return res.json();
+        });
+      }
+
+      Promise.all([fetchJson("/user"), fetchJson("/container")])
+        .then(([userData, containerData]) => {
+          document.getElementById("user").innerText = userData.name;
+          document.getElementById("container").innerText =
+            containerData.container_id;
+        })
+        .catch(() => {
+          document.getElementById("user").innerText = "Unavailable";
+          document.getElementById("container").innerText = "Unavailable";
+        });
+    </script>
+  </body>
+</html>

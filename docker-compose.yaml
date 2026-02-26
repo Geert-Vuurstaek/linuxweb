@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  gv-postgres:
+    image: postgres:16
+    container_name: gv-postgres
+    environment:
+      POSTGRES_DB: gv_db
+      POSTGRES_USER: gv_user
+      POSTGRES_PASSWORD: gv_pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+
+  gv-api:
+    build: ./api
+    image: gv-api:1.0
+    container_name: gv-api
+    environment:
+      DB_HOST: gv-postgres
+      DB_PORT: 5432
+      DB_NAME: gv_db
+      DB_USER: gv_user
+      DB_PASSWORD: gv_pass
+    depends_on:
+      - gv-postgres
+    ports:
+      - "8000:8000"
+
+  gv-frontend:
+    build: ./frontend
+    image: gv-frontend:1.0
+    container_name: gv-frontend
+    depends_on:
+      - gv-api
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
