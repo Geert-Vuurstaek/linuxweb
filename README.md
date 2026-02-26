@@ -37,3 +37,23 @@
 	- sudo iptables -X
 - Op de control node:
 	- rm -rf $HOME/.kube
+
+## Demo script (kort)
+- Toon cluster en nodes:
+	- kubectl get nodes
+- Toon pods in namespace:
+	- kubectl get pods -n gv-webstack -o wide
+- Open webapp: http://gv.local
+- Toon API endpoints:
+	- http://gv.local/api/user
+	- http://gv.local/api/container
+- Update naam in DB, refresh pagina:
+	- kubectl exec -n gv-webstack deploy/gv-postgres -- psql -U gv_user -d gv_db -c "UPDATE users SET name='Geert Vuurstaek' WHERE id=1;"
+- Toon Prometheus Targets en metrics:
+	- kubectl port-forward -n gv-monitoring svc/gv-prometheus 9090:9090
+	- Open http://localhost:9090/targets
+	- Query: api_requests_total
+- Toon Grafana dashboard
+- ArgoCD demo:
+	- Open UI, app is Synced/Healthy
+	- Kleine wijziging in repo, push, auto-sync tonen
