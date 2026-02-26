@@ -23,6 +23,7 @@ spec:
       containers:
         - name: gv-api
           image: gv-api:1.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:

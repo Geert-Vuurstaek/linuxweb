@@ -16,5 +16,6 @@ spec:
       containers:
         - name: gv-frontend
           image: gv-frontend:1.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

@@ -15,6 +15,32 @@ Client -> Ingress (gv.local) ->
 - / -> gv-frontend service -> gv-frontend pod
 - /api/* -> gv-api service -> gv-api pods -> gv-postgres service -> gv-postgres pod
 
+## Werking van de applicatie (kort)
+De browser laadt de frontend via de Ingress en de JavaScript haalt de naam en container ID op via de API. De API leest de naam uit PostgreSQL en exposeert ook metrics voor Prometheus. Door ArgoCD worden wijzigingen in de repo automatisch toegepast op het cluster.
+
+**Architectuurdiagram (NL)**
+```mermaid
+flowchart LR
+  U[User browser] -->|HTTP| I[Ingress gv.local]
+  I -->|/| FE[Frontend Service]
+  I -->|/api| API[API Service]
+  FE --> FEPOD[Frontend Pod]
+  API --> APIPODS[API Pods]
+  APIPODS --> DB[Postgres Service]
+  DB --> DBPOD[Postgres Pod]
+  APIPODS --> METRICS[/metrics]
+  PROM[Prometheus] --> METRICS
+```
+
+**GitOps flow (NL)**
+```mermaid
+flowchart LR
+  DEV[Developer] -->|git push| REPO[GitHub repo]
+  REPO -->|poll/sync| ARGO[ArgoCD]
+  ARGO -->|apply manifests| K8S[Kubernetes]
+  K8S -->|runs| APP[Webstack pods]
+```
+
 ## Broncode
 Projectstructuur:
 - frontend/
