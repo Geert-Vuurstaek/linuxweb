@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gv-frontend
+  namespace: gv-webstack
+spec:
+  type: ClusterIP
+  selector:
+    app: gv-frontend
+  ports:
+    - port: 80
+      targetPort: 80

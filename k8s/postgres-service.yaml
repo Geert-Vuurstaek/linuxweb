@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gv-postgres
+  namespace: gv-webstack
+spec:
+  type: ClusterIP
+  selector:
+    app: gv-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

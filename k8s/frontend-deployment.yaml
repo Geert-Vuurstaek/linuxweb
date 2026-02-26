@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gv-frontend
+  namespace: gv-webstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gv-frontend
+  template:
+    metadata:
+      labels:
+        app: gv-frontend
+    spec:
+      containers:
+        - name: gv-frontend
+          image: gv-frontend:1.0
+          ports:
+            - containerPort: 80

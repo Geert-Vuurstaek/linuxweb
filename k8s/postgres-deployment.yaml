@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gv-postgres
+  namespace: gv-webstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gv-postgres
+  template:
+    metadata:
+      labels:
+        app: gv-postgres
+    spec:
+      containers:
+        - name: gv-postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: gv-postgres-secret
+          volumeMounts:
+            - name: gv-postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: gv-postgres-init
+              mountPath: /docker-entrypoint-initdb.d/init.sql
+              subPath: init.sql
+      volumes:
+        - name: gv-postgres-data
+          emptyDir: {}
+        - name: gv-postgres-init
+          configMap:
+            name: gv-postgres-init
