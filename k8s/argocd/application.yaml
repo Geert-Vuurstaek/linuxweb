@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/Geert-Vuurstaek/linuxweb.git
     targetRevision: main
-    path: k8s
+    path: k8s/webstack
     directory:
       recurse: true
   destination:
