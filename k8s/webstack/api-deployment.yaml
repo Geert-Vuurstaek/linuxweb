@@ -16,19 +16,19 @@ spec:
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
+          whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
               app: gv-api
       containers:
         - name: gv-api
-          image: gv-api:1.0
+          image: gv-api:1.3
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:
             - name: DB_HOST
-              value: gv-postgres
+              value: "gv-postgres.gv-webstack.svc.cluster.local"
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
@@ -52,9 +52,13 @@ spec:
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6

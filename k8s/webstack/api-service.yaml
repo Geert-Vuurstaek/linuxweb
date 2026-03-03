@@ -8,9 +8,10 @@ metadata:
     prometheus.io/path: /metrics
     prometheus.io/port: "8000"
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: gv-api
   ports:
     - port: 8000
       targetPort: 8000
+      nodePort: 30080

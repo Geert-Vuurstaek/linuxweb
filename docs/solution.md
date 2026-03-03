@@ -2,7 +2,7 @@
 
 ## Overzicht
 Deze oplossing bevat een 3-container webstack:
-- Frontend (NGINX) serveert een JavaScript pagina.
+- Frontend (Apache) serveert een JavaScript pagina.
 - FastAPI backend met endpoints:
   - GET /user: haalt de naam uit PostgreSQL.
   - GET /container: geeft de container ID (hostname).
@@ -54,34 +54,24 @@ Projectstructuur:
   - init.sql
 - k8s/
   - namespace.yaml
-  - postgres-secret.yaml
-  - postgres-configmap.yaml
-  - postgres-deployment.yaml
-  - postgres-service.yaml
-  - api-deployment.yaml
-  - api-service.yaml
-  - frontend-deployment.yaml
-  - frontend-service.yaml
+  - webstack/
+    - postgres-secret.yaml
+    - postgres-configmap.yaml
+    - postgres-deployment.yaml
+    - postgres-service.yaml
+    - api-deployment.yaml
+    - api-service.yaml
+    - frontend-deployment.yaml
+    - frontend-service.yaml
   - ingress.yaml
-  - kind/kind-config.yaml
   - prometheus/
-    - namespace.yaml
-    - rbac.yaml
-    - configmap.yaml
-    - deployment.yaml
-    - service.yaml
-  - grafana/
-    - secret.yaml
-    - datasource.yaml
-    - dashboards.yaml
-    - dashboard-configmap.yaml
-    - dashboard-api.json
-    - deployment.yaml
-    - service.yaml
+    - prometheus-configmap.yaml
+    - prometheus-deployment.yaml
+    - prometheus-service.yaml
+    - kube-state-metrics.yaml
   - argocd/
     - application.yaml
     - monitoring-prometheus.yaml
-    - monitoring-grafana.yaml
   - metallb/
     - ip-pool.yaml
 - docker-compose.yaml
@@ -93,36 +83,35 @@ Projectstructuur:
 2) Open frontend:
 - http://localhost:8080
 
-## Kubernetes cluster (kind)
-### 1) Cluster aanmaken
-- kind create cluster --name gv-cluster --config k8s/kind/kind-config.yaml
+## Kubernetes cluster (kubeadm + Vagrant)
+### 1) VMs opstarten en provisionen
+- cd vagrant
+- vagrant up
 
-### 2) Ingress controller installeren
-- kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+### 2) Images bouwen en distribueren
+- bash build_and_distribute_images.sh
 
-### 3) Images bouwen en laden in kind
-- docker build -t gv-frontend:1.0 ./frontend
-- docker build -t gv-api:1.0 ./api
-- kind load docker-image gv-frontend:1.0 --name gv-cluster
-- kind load docker-image gv-api:1.0 --name gv-cluster
+### 3) Manifests deployen (incl. ingress-nginx, MetalLB, ArgoCD, namespaces)
+- bash deploy_manifests.sh
 
-### 4) Manifesten toepassen
+### 4) Hosts entry
+- Neem het EXTERNAL-IP van de ingress-nginx LoadBalancer (MetalLB pool 192.168.56.100-192.168.56.120) en voeg toe:
+- `<EXTERNAL-IP> gv.local`
+
+### 5) Toegang
+- Web: http://gv.local
+- API: http://gv.local/api/user en /api/container
+
+### 6) Monitoring toegang
+- Prometheus: http://192.168.56.12:31025/targets
+
+### 6) Handmatige apply (indien nodig)
 - kubectl apply -f k8s/namespace.yaml
-- kubectl apply -f k8s/postgres-secret.yaml
-- kubectl apply -f k8s/postgres-configmap.yaml
-- kubectl apply -f k8s/postgres-deployment.yaml
-- kubectl apply -f k8s/postgres-service.yaml
-- kubectl apply -f k8s/api-deployment.yaml
-- kubectl apply -f k8s/api-service.yaml
-- kubectl apply -f k8s/frontend-deployment.yaml
-- kubectl apply -f k8s/frontend-service.yaml
+- kubectl apply -f k8s/metallb/ip-pool.yaml
+- kubectl apply -f k8s/webstack/
 - kubectl apply -f k8s/ingress.yaml
 
-### 5) Hosts entry (Windows)
-Voeg toe aan C:\Windows\System32\drivers\etc\hosts:
-- 127.0.0.1 gv.local
-
-### 6) Testen
+### 7) Testen
 - Open http://gv.local
 - API test:
   - http://gv.local/api/user
@@ -181,7 +170,7 @@ MetalLB zorgt voor een extern IP voor de Ingress controller.
   - Kies een vrij IP-bereik binnen je LAN subnet, bv. 192.168.1.240-192.168.1.250.
 
 ### 8) Applicatie deployen
-Zelfde manifests als bij kind:
+Zelfde manifests als hierboven:
 - kubectl apply -f k8s/namespace.yaml
 - kubectl apply -f k8s/postgres-secret.yaml
 - kubectl apply -f k8s/postgres-configmap.yaml
@@ -204,57 +193,27 @@ Zelfde manifests als bij kind:
 De API deployment bevat liveness en readiness probes op /health.
 
 ### Extra worker node + API scaling
-- In k8s/kind/kind-config.yaml staat een extra worker node.
+- Vagrant cluster heeft 1 master + 2 workers.
 - gv-api heeft replicas: 2 en toont de container ID in de frontend.
 - Verifiëren dat replicas over nodes verdeeld zijn:
   - kubectl get nodes
   - kubectl get pods -n gv-webstack -l app=gv-api -o wide
 
 ### Prometheus monitoring
-Prometheus draait in de namespace gv-monitoring en scrapt nodes/cAdvisor metrics.
-De API exposeert /metrics en wordt automatisch ontdekt via service annotations.
+Prometheus draait in de namespace gv-monitoring.
+De API exposeert /metrics en wordt gescrapet samen met kube-state-metrics.
 
 Installatie:
-- kubectl apply -f k8s/prometheus/namespace.yaml
-- kubectl apply -f k8s/prometheus/rbac.yaml
-- kubectl apply -f k8s/prometheus/configmap.yaml
-- kubectl apply -f k8s/prometheus/deployment.yaml
-- kubectl apply -f k8s/prometheus/service.yaml
+- kubectl apply -f k8s/prometheus/prometheus-configmap.yaml
+- kubectl apply -f k8s/prometheus/prometheus-deployment.yaml
+- kubectl apply -f k8s/prometheus/prometheus-service.yaml
+- kubectl apply -f k8s/prometheus/kube-state-metrics.yaml
 
-Toegang (port-forward):
-- kubectl port-forward -n gv-monitoring svc/gv-prometheus 9090:9090
-- Open http://localhost:9090
+Toegang:
+- Open http://192.168.56.12:31025/targets
 
 Metrics test (curl):
 - curl http://gv.local/api/metrics
-
-Dashboard imports (suggesties):
-- Node Exporter Full (ID 1860)
-- Kubernetes / Compute Resources / Cluster (ID 12125)
-- Kubernetes / Compute Resources / Namespace (Pods) (ID 11663)
-
-### Grafana (quick demo)
-Grafana draait in dezelfde namespace met een voorgedefinieerde Prometheus datasource.
-
-Installatie:
-- kubectl apply -f k8s/grafana/secret.yaml
-- kubectl apply -f k8s/grafana/datasource.yaml
-- kubectl apply -f k8s/grafana/dashboards.yaml
-- kubectl apply -f k8s/grafana/dashboard-configmap.yaml
-- kubectl apply -f k8s/grafana/deployment.yaml
-- kubectl apply -f k8s/grafana/service.yaml
-
-Toegang (port-forward):
-- kubectl port-forward -n gv-monitoring svc/gv-grafana 3000:3000
-- Open http://localhost:3000
-- Login: gv_admin / gv_admin
-
-Grafana demo checklist:
-- Open dashboard "GV API Overview"
-- Toon request rate per endpoint
-- Toon response rates per status code
-- Toon DB query p95 latency
-- Toon "Metrics (requests + errors)" panel
 
 ### ArgoCD (Helm + GitOps)
 ArgoCD wordt met Helm geinstalleerd en volgt een Git repo voor automatische deploys.
@@ -280,19 +239,18 @@ ArgoCD wordt met Helm geinstalleerd en volgt een Git repo voor automatische depl
 
 6) Monitoring registreren (aparte apps)
 - kubectl apply -f k8s/argocd/monitoring-prometheus.yaml
-- kubectl apply -f k8s/argocd/monitoring-grafana.yaml
 
 7) GitOps workflow
 - Elke wijziging in de repo (k8s/) wordt automatisch toegepast door ArgoCD.
 - `syncPolicy.automated` zorgt voor auto-sync + self-heal.
 
 ### Troubleshooting Targets
-- Controleer service annotations: `kubectl get svc -n gv-webstack gv-api -o yaml`
-- Controleer Grafana service annotations: `kubectl get svc -n gv-monitoring gv-grafana -o yaml`
-- Controleer Prometheus targets: http://localhost:9090/targets
+- Controleer API service/NodePort: `kubectl get svc -n gv-webstack gv-api -o wide`
+- Controleer kube-state-metrics service/NodePort: `kubectl get svc -n gv-monitoring kube-state-metrics -o wide`
+- Controleer Prometheus targets: http://192.168.56.12:31025/targets
 - Test metrics direct:
   - `curl http://gv.local/api/metrics`
-  - `kubectl port-forward -n gv-monitoring svc/gv-grafana 3000:3000` en open http://localhost:3000/metrics
+  - `curl http://192.168.56.12:30081/metrics`
 
 ## Wijzigen van de naam
 1) Update in database:
@@ -302,9 +260,9 @@ ArgoCD wordt met Helm geinstalleerd en volgt een Git repo voor automatische depl
 
 ## Layout wijziging
 - Pas frontend/index.html aan.
-- Bouw het image opnieuw, laad in kind, en herstart de deployment:
+- Bouw het image opnieuw en distribueer/herstart de deployment:
   - docker build -t gv-frontend:1.0 ./frontend
-  - kind load docker-image gv-frontend:1.0 --name gv-cluster
+  - cd vagrant && ./build_and_distribute_images.ps1
   - kubectl rollout restart -n gv-webstack deployment/gv-frontend
 
 ## Uitleg van de belangrijkste configuratie
@@ -315,20 +273,20 @@ ArgoCD wordt met Helm geinstalleerd en volgt een Git repo voor automatische depl
 
 ## Screenshots
 Voeg hier screenshots toe van:
-- kind cluster nodes
+- kubeadm cluster nodes
 - pods in gv-webstack namespace
 - frontend in browser
 - API responses
 - update van naam in DB
 
 ## Proof checklist (screenshots)
-- kind cluster met 2 workers: `kubectl get nodes`
+- kubeadm cluster met 2 workers: `kubectl get nodes`
 - API pods gespreid over nodes: `kubectl get pods -n gv-webstack -l app=gv-api -o wide`
 - Frontend met naam + container ID zichtbaar
 - API `/user` en `/container` in browser of curl
 - DB update + page refresh (nieuwe naam zichtbaar)
 - Prometheus Targets page met `gv-api` op `UP`
-- Prometheus Graph met `up{job="kubernetes-service-endpoints"}`
+- Prometheus Graph met `up{job="gv-api"}`
 
 ## Conclusie
-Deze oplossing levert een 3-container webstack die draait op een kind cluster met 1 worker node, en voldoet aan de gevraagde API endpoints en database integratie.
+Deze oplossing levert een 3-container webstack die draait op een kubeadm cluster met Vagrant (1 control-plane + 2 workers), en voldoet aan de gevraagde API endpoints en database integratie.

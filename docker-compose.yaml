@@ -16,7 +16,7 @@ services:
 
   gv-api:
     build: ./api
-    image: gv-api:1.0
+    image: gv-api:1.3
     container_name: gv-api
     environment:
       DB_HOST: gv-postgres

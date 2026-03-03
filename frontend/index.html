@@ -14,7 +14,9 @@
       const apiBase = "/api";
 
       function fetchJson(path) {
-        return fetch(`${apiBase}${path}`).then((res) => {
+        const sep = path.includes("?") ? "&" : "?";
+        const url = `${apiBase}${path}${sep}_=${Date.now()}-${Math.random()}`;
+        return fetch(url, { cache: "no-store" }).then((res) => {
           if (!res.ok) {
             throw new Error("Request failed");
           }
@@ -22,14 +24,20 @@
         });
       }
 
-      Promise.all([fetchJson("/user"), fetchJson("/container")])
-        .then(([userData, containerData]) => {
+      fetchJson("/user")
+        .then((userData) => {
           document.getElementById("user").innerText = userData.name;
+        })
+        .catch(() => {
+          document.getElementById("user").innerText = "Unavailable";
+        });
+
+      fetchJson("/container")
+        .then((containerData) => {
           document.getElementById("container").innerText =
             containerData.container_id;
         })
         .catch(() => {
-          document.getElementById("user").innerText = "Unavailable";
           document.getElementById("container").innerText = "Unavailable";
         });
     </script>

@@ -51,31 +51,60 @@ def get_db_config():
 
 def get_conn():
     config = get_db_config()
-    return psycopg2.connect(**config)
+    last_error = None
+    for attempt in range(3):
+        try:
+            return psycopg2.connect(connect_timeout=3, **config)
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(0.4 * (attempt + 1))
+    raise last_error
 
 
 @app.get("/user")
 def get_user():
     start_time = time.perf_counter()
+    last_error = None
     try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT name FROM users WHERE id = 1;")
-                row = cur.fetchone()
-                if not row:
-                    raise HTTPException(status_code=404, detail="User not found")
-                return {"name": row[0]}
+        for attempt in range(8):
+            try:
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT name FROM users WHERE id = 1;")
+                        row = cur.fetchone()
+                        if not row or not row[0]:
+                            raise HTTPException(status_code=404, detail="User not found")
+                        return {"name": row[0]}
+            except HTTPException:
+                raise
+            except Exception as exc:
+                last_error = exc
+                if attempt < 7:
+                    time.sleep(min(0.5 + (attempt * 0.3), 2.0))
+                    continue
+                raise
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        raise HTTPException(status_code=503, detail="Database unavailable") from (last_error or exc)
     finally:
         DB_QUERY_SECONDS.observe(time.perf_counter() - start_time)
+
+
+@app.get("/api/user")
+def get_user_via_api_prefix():
+    return get_user()
 
 
 @app.get("/container")
 def get_container():
     return {"container_id": socket.gethostname()}
+
+
+@app.get("/api/container")
+def get_container_via_api_prefix():
+    return get_container()
 
 
 @app.get("/health")

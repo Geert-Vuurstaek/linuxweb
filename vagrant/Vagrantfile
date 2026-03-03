@@ -1,0 +1,28 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 2048
+    vb.cpus = 2
+  config.vm.boot_timeout = 900
+  end
+
+  nodes = [
+    { :hostname => "k8s-master", :ip => "192.168.56.10", :provision => "init-master.sh" },
+    { :hostname => "k8s-worker1", :ip => "192.168.56.11", :provision => "join-workers.sh" },
+    { :hostname => "k8s-worker2", :ip => "192.168.56.12", :provision => "join-workers.sh" }
+  ]
+
+  nodes.each do |node|
+    config.vm.define node[:hostname] do |nodeconfig|
+      nodeconfig.vm.hostname = node[:hostname]
+      nodeconfig.vm.network "private_network", ip: node[:ip]
+      nodeconfig.vm.provision "shell", path: "provision.sh"
+      nodeconfig.vm.provision "shell", path: node[:provision]
+    end
+  end
+end
