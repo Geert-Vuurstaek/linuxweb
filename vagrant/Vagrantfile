@@ -6,9 +6,9 @@ VAGRANTFILE_API_VERSION = "2"
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "ubuntu/jammy64"
   config.vm.provider "virtualbox" do |vb|
-    vb.memory = 2048
-    vb.cpus = 2
-  config.vm.boot_timeout = 900
+    vb.memory = 4096
+    vb.cpus = 4
+    config.vm.boot_timeout = 900
   end
 
   nodes = [
