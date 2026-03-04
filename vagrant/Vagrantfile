@@ -5,11 +5,7 @@ VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "ubuntu/jammy64"
-  config.vm.provider "virtualbox" do |vb|
-    vb.memory = 4096
-    vb.cpus = 4
-    config.vm.boot_timeout = 900
-  end
+  config.vm.boot_timeout = 1200
 
   nodes = [
     { :hostname => "k8s-master", :ip => "192.168.56.10", :provision => "init-master.sh" },
@@ -21,6 +17,26 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     config.vm.define node[:hostname] do |nodeconfig|
       nodeconfig.vm.hostname = node[:hostname]
       nodeconfig.vm.network "private_network", ip: node[:ip]
+
+      nodeconfig.vm.provider "virtualbox" do |vb|
+        if node[:hostname] == "k8s-master"
+          vb.memory = 4096
+          vb.cpus = 4
+        else
+          vb.memory = 3072
+          vb.cpus = 2
+        end
+
+        vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+        vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
+      end
+      
+      # Fix DNS resolution
+      nodeconfig.vm.provision "shell", inline: <<-SHELL
+        echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
+        echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf > /dev/null
+      SHELL
+      
       nodeconfig.vm.provision "shell", path: "provision.sh"
       nodeconfig.vm.provision "shell", path: node[:provision]
     end

@@ -6,9 +6,25 @@ K8S_VERSION="v1.29"
 K8S_REPO="https://pkgs.k8s.io/core:/stable:/${K8S_VERSION}/deb/"
 USER="vagrant"
 
+configure_dns() {
+    mkdir -p /etc/systemd/resolved.conf.d
+    cat <<EOF >/etc/systemd/resolved.conf.d/99-vagrant-dns.conf
+[Resolve]
+DNS=1.1.1.1 8.8.8.8
+FallbackDNS=9.9.9.9 8.8.4.4
+DNSStubListener=yes
+EOF
+
+    systemctl restart systemd-resolved || true
+
+    if [ -f /run/systemd/resolve/resolv.conf ]; then
+        ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+    fi
+}
+
 retry_apt_update() {
     local tries=0
-    until apt-get update; do
+    until apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30; do
         tries=$((tries + 1))
         if [ ${tries} -ge 5 ]; then
             echo "[ERROR] apt-get update failed after ${tries} attempts" >&2
@@ -19,9 +35,24 @@ retry_apt_update() {
     done
 }
 
+retry_apt_install() {
+    local tries=0
+    until apt-get install -y "$@"; do
+        tries=$((tries + 1))
+        if [ ${tries} -ge 5 ]; then
+            echo "[ERROR] apt-get install failed after ${tries} attempts: $*" >&2
+            return 1
+        fi
+        echo "[WARN] apt-get install failed, refreshing indexes and retrying in 5s..." >&2
+        retry_apt_update
+        sleep 5
+    done
+}
+
 echo "[INFO] Installing prerequisites..."
+configure_dns
 retry_apt_update
-apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release software-properties-common
+retry_apt_install ca-certificates curl gnupg lsb-release software-properties-common
 
 # --- Disable swap (required by kubeadm) ---
 swapoff -a
@@ -48,7 +79,7 @@ if ! command -v containerd &> /dev/null; then
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
         > /etc/apt/sources.list.d/docker.list
     retry_apt_update
-    apt-get install -y containerd.io
+    retry_apt_install containerd.io
     mkdir -p /etc/containerd
     containerd config default | tee /etc/containerd/config.toml >/dev/null
     sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
@@ -68,7 +99,7 @@ if ! command -v kubeadm &> /dev/null; then
     echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] ${K8S_REPO} /" \
         > /etc/apt/sources.list.d/kubernetes.list
     retry_apt_update
-    apt-get install -y kubelet kubeadm kubectl
+    retry_apt_install kubelet kubeadm kubectl
     apt-mark hold kubelet kubeadm kubectl
 fi
 

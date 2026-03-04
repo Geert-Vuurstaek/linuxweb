@@ -4,7 +4,7 @@ metadata:
   name: gv-frontend
   namespace: gv-webstack
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: gv-frontend
@@ -13,6 +13,18 @@ spec:
       labels:
         app: gv-frontend
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - gv-frontend
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: gv-frontend
           image: frontend-apache

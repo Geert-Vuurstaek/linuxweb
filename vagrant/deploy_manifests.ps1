@@ -14,6 +14,25 @@ if ([string]::IsNullOrWhiteSpace($vagrantCmd)) {
     $vagrantCmd = $found.Source
 }
 
+function Wait-ServiceEndpoints {
+    param(
+        [string]$Namespace,
+        [string]$Service,
+        [int]$TimeoutSeconds = 180
+    )
+
+    $attempts = [Math]::Max([Math]::Ceiling($TimeoutSeconds / 5), 1)
+    for ($a = 1; $a -le $attempts; $a++) {
+        $ips = & $vagrantCmd ssh $Master -c "kubectl get endpoints -n $Namespace $Service -o jsonpath='{.subsets[*].addresses[*].ip}'" 2>$null
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($ips)) {
+            return $true
+        }
+        Start-Sleep -Seconds 5
+    }
+
+    return $false
+}
+
 Write-Host "[INFO] Zorg voor vereiste namespaces..."
 & $vagrantCmd ssh $Master -c "kubectl create ns gv-webstack --dry-run=client -o yaml | kubectl apply -f -"
 if ($LASTEXITCODE -ne 0) { throw "Namespaces aanmaken mislukt (gv-webstack)." }
@@ -40,6 +59,11 @@ if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] ingress-nginx-admission-create job
 & $vagrantCmd ssh $Master -c "kubectl -n ingress-nginx wait --for=condition=complete job/ingress-nginx-admission-patch --timeout=180s"
 if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] ingress-nginx-admission-patch job niet op tijd klaar." }
 
+Write-Host "[INFO] Wachten op ingress admission webhook endpoint..."
+if (-not (Wait-ServiceEndpoints -Namespace "ingress-nginx" -Service "ingress-nginx-controller-admission" -TimeoutSeconds 180)) {
+    Write-Host "[WARN] ingress admission service heeft nog geen endpoints; retries/fallback blijven actief."
+}
+
 Write-Host "[INFO] Install MetalLB..."
 & $vagrantCmd ssh $Master -c "kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml"
 if ($LASTEXITCODE -ne 0) { throw "Installatie MetalLB mislukt." }
@@ -49,6 +73,11 @@ Write-Host "[INFO] Wachten op MetalLB controller/speaker readiness..."
 if ($LASTEXITCODE -ne 0) { throw "MetalLB controller werd niet op tijd ready." }
 & $vagrantCmd ssh $Master -c "kubectl -n metallb-system rollout status daemonset/speaker --timeout=240s"
 if ($LASTEXITCODE -ne 0) { throw "MetalLB speaker werd niet op tijd ready." }
+
+Write-Host "[INFO] Wachten op MetalLB webhook endpoint..."
+if (-not (Wait-ServiceEndpoints -Namespace "metallb-system" -Service "webhook-service" -TimeoutSeconds 180)) {
+    Write-Host "[WARN] MetalLB webhook service heeft nog geen endpoints; retries/fallback blijven actief."
+}
 
 Write-Host "[INFO] Install ArgoCD..."
 & $vagrantCmd ssh $Master -c "kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
@@ -86,6 +115,22 @@ if (-not $metallbApplied) {
 }
 & $vagrantCmd ssh $Master -c "kubectl apply -f ${RemoteK8sPath}/webstack/"
 if ($LASTEXITCODE -ne 0) { throw "Apply webstack manifests mislukt." }
+
+Write-Host "[INFO] Stabiliseer API DB-host (bypass DNS via postgres ClusterIP)..."
+$pgIp = (& $vagrantCmd ssh $Master -c "kubectl get svc -n gv-webstack gv-postgres -o jsonpath='{.spec.clusterIP}'").Trim()
+if ([string]::IsNullOrWhiteSpace($pgIp)) {
+    Write-Host "[WARN] Kon gv-postgres ClusterIP niet lezen; API blijft DB-host via service-DNS gebruiken."
+} else {
+    & $vagrantCmd ssh $Master -c "kubectl set env -n gv-webstack deploy/gv-api DB_HOST=$pgIp"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARN] Kon DB_HOST op gv-api niet updaten naar ClusterIP $pgIp."
+    } else {
+        & $vagrantCmd ssh $Master -c "kubectl rollout status -n gv-webstack deploy/gv-api --timeout=180s"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[WARN] gv-api rollout na DB_HOST update haalde timeout."
+        }
+    }
+}
 
 $ingressApplied = $false
 for ($i = 1; $i -le 5; $i++) {

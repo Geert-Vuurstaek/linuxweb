@@ -13,6 +13,8 @@ spec:
       labels:
         app: gv-prometheus
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-worker1
       containers:
         - name: prometheus
           image: prom/prometheus
