@@ -1,2 +1,4 @@
 .vagrant/
 vagrant/.vagrant/
+*.tar
+vagrant/flannel-patch.json

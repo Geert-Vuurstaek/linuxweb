@@ -112,6 +112,11 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/health")
+def health_via_api_prefix():
+    return health()
+
+
 @app.get("/metrics")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

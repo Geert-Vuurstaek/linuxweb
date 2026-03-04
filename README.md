@@ -225,6 +225,44 @@ kubectl exec -it -n gv-webstack deploy/gv-postgres -- psql -U gv_user -d gv_db
 
 ---
 
+## VMs pauzeren / hervatten
+
+Wil je de VMs tijdelijk uitzetten zonder alles te verliezen? Gebruik `suspend` en `resume`:
+
+```powershell
+cd vagrant
+
+# Alles pauzeren (slaat RAM-staat op naar disk)
+vagrant suspend
+
+# Weer hervatten
+vagrant resume
+```
+
+Je kunt ook de VMs uitzetten (graceful shutdown) en later weer opstarten:
+
+```powershell
+# Uitzetten (shutdown)
+vagrant halt
+
+# Weer opstarten
+vagrant up
+```
+
+> **Tip:** Na `vagrant resume` of `vagrant up` kan het ~1 minuut duren voordat alle Kubernetes pods weer `Ready` zijn. Check met:
+> ```powershell
+> vagrant ssh k8s-master -- kubectl get nodes
+> vagrant ssh k8s-master -- kubectl get pods -A
+> ```
+
+| Commando | Effect | Snelheid hervatten |
+|----------|--------|--------------------|
+| `vagrant suspend` | RAM opslaan naar disk | Snel (~10s) |
+| `vagrant halt` | Graceful shutdown | Langzamer (~1-2 min) |
+| `vagrant destroy -f` | VMs volledig verwijderen | Moet opnieuw opzetten |
+
+---
+
 ## Reset / opruimen
 ```powershell
 cd vagrant
