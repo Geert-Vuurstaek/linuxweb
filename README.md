@@ -38,6 +38,7 @@
 - ✅ API scaling (2 replicas verdeeld over workers via pod anti-affinity)
 - ✅ Healthchecks (liveness + readiness probes op `/health`)
 - ✅ Prometheus monitoring (scrape gv-api + kube-state-metrics)
+- ✅ Grafana dashboards (cluster overview, API metrics, pod spreiding)
 
 ---
 
@@ -119,6 +120,27 @@ Verwachte targets (alle UP):
 - `kube-state-metrics` → `kube-state-metrics.gv-monitoring.svc.cluster.local:8080`
 - `prometheus` → `localhost:9090`
 
+### Grafana (dashboards)
+Port-forward opzetten vanuit de `vagrant/` map:
+```powershell
+# Terminal 1: port-forward in de VM
+vagrant ssh k8s-master -- kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/grafana 13000:3000
+
+# Terminal 2: SSH tunnel naar localhost (vanuit vagrant/ map)
+ssh -o StrictHostKeyChecking=no -i "<absoluut-pad>/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 13000:localhost:13000 vagrant@127.0.0.1
+```
+Open: **http://localhost:13000**
+
+**Credentials:** admin / admin (skip password change)
+
+Het "GV Kubernetes Cluster" dashboard opent automatisch met:
+- CPU & Memory usage gauges
+- Nodes Ready / Pods Running / Pods Not Ready
+- API Requests & Responses per endpoint
+- Pods per Node & Namespace
+- DB Query Duration
+- Pod overview tabel (gv-webstack)
+
 ### ArgoCD (GitOps)
 ```powershell
 # Terminal 1: port-forward in de VM
@@ -183,12 +205,25 @@ Refresh http://gv.local meerdere keren — de **container hostname** wisselt tus
 
 ---
 
-## Demo — Prometheus metrics
+## Demo — Monitoring (Grafana + Prometheus)
 
+### Grafana dashboard
+Open **http://localhost:13000** → het "GV Kubernetes Cluster" dashboard toont:
+- **Gauges:** Cluster CPU & Memory usage percentage
+- **Stats:** Nodes Ready, Pods Running, Pods Not Ready
+- **Grafieken:** API requests/responses per endpoint, pods per node/namespace
+- **Tabel:** Overzicht van alle gv-webstack pods met node en IP
+
+Genereer wat traffic om data te zien:
+```powershell
+1..20 | ForEach-Object { Invoke-RestMethod http://gv.local/api/user | Out-Null }
+```
+
+### Prometheus (raw queries)
 Open http://localhost:19090 en voer een query uit:
-- `api_requests_total` — toont totaal aantal requests per endpoint
-- `api_responses_total` — toont responses per status code
-- `kube_pod_info` — toont alle pods in het cluster
+- `api_requests_total` — totaal aantal requests per endpoint
+- `api_responses_total` — responses per status code
+- `kube_pod_info` — alle pods in het cluster
 
 ---
 
