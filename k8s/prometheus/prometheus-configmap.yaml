@@ -12,8 +12,9 @@ data:
         static_configs:
           - targets: ['localhost:9090']
       - job_name: 'gv-api'
+        metrics_path: /metrics
         static_configs:
-          - targets: ['192.168.56.11:30080']
+          - targets: ['gv-api.gv-webstack.svc.cluster.local:8000']
       - job_name: 'kube-state-metrics'
         static_configs:
-          - targets: ['192.168.56.12:30081']
+          - targets: ['kube-state-metrics.gv-monitoring.svc.cluster.local:8080']

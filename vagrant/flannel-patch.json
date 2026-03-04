@@ -1,0 +1,1 @@
+[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--ip-masq","--kube-subnet-mgr","--iface=enp0s8"]}]
