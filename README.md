@@ -3,12 +3,14 @@
 ## Architectuur
 
 ```
-                  ┌──────────────────┐
-                  │   gv.local       │  ← hosts entry naar MetalLB EXTERNAL-IP
-                  └────────┬─────────┘
+          ┌───────────────────────────────────┐
+          │ gv-webstack.duckdns.org (HTTPS)   │  ← DuckDNS → MetalLB IP
+          │ gv.local (HTTP)                   │  ← hosts entry
+          └────────────────┬──────────────────┘
                            │
                   ┌────────▼─────────┐
                   │  ingress-nginx   │  LoadBalancer (MetalLB 192.168.56.100-120)
+                  │  TLS termination │  ← Let's Encrypt cert via cert-manager
                   └────────┬─────────┘
                     ┌──────┴──────┐
                     │             │
@@ -39,6 +41,7 @@
 - ✅ Healthchecks (liveness + readiness probes op `/health`)
 - ✅ Prometheus monitoring (scrape gv-api + kube-state-metrics)
 - ✅ Grafana dashboards (cluster overview, API metrics, pod spreiding)
+- ✅ HTTPS met Let's Encrypt certificaat (cert-manager + DuckDNS DNS-01 challenge)
 
 ---
 
@@ -83,14 +86,17 @@ Zoek het EXTERNAL-IP van de ingress:
 ```powershell
 vagrant ssh k8s-master -- kubectl get svc -n ingress-nginx ingress-nginx-controller
 ```
-Voeg toe aan `C:\Windows\System32\drivers\etc\hosts`:
+Voeg toe aan `C:\Windows\System32\drivers\etc\hosts` (als admin):
 ```
-192.168.56.1xx  gv.local
+192.168.56.100  gv.local
+192.168.56.100  gv-webstack.duckdns.org
 ```
-(Vervang `1xx` door het daadwerkelijke MetalLB IP)
 
 ### Stap 5 — Controleren
-Open **http://gv.local** in je browser. Je ziet de naam uit de database en de container hostname.
+- Open **https://gv-webstack.duckdns.org** — HTTPS met geldig Let's Encrypt certificaat
+- Open **http://gv.local** — HTTP fallback
+
+Je ziet de naam uit de database en de container hostname.
 
 ---
 
@@ -99,7 +105,10 @@ Open **http://gv.local** in je browser. Je ziet de naam uit de database en de co
 ### Webapplicatie
 | URL | Omschrijving |
 |-----|-------------|
-| http://gv.local | Frontend (toont naam + container) |
+| https://gv-webstack.duckdns.org | Frontend via HTTPS (Let's Encrypt) |
+| https://gv-webstack.duckdns.org/api/user | API: naam uit PostgreSQL (HTTPS) |
+| https://gv-webstack.duckdns.org/api/health | API: health status (HTTPS) |
+| http://gv.local | Frontend (HTTP fallback) |
 | http://gv.local/api/user | API: naam uit PostgreSQL |
 | http://gv.local/api/container | API: container hostname |
 | http://gv.local/api/health | API: health status |
@@ -224,6 +233,28 @@ Open http://localhost:19090 en voer een query uit:
 - `api_requests_total` — totaal aantal requests per endpoint
 - `api_responses_total` — responses per status code
 - `kube_pod_info` — alle pods in het cluster
+
+---
+
+## Demo — HTTPS certificaat
+
+Het certificaat is automatisch aangevraagd via cert-manager + DuckDNS DNS-01 challenge:
+```powershell
+# Certificaat status bekijken
+vagrant ssh k8s-master -- kubectl get certificate -n gv-webstack
+# → gv-webstack-tls   True    gv-webstack-tls   ...
+
+# Certificaat details
+vagrant ssh k8s-master -- "kubectl get secret gv-webstack-tls -n gv-webstack -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject -issuer -dates"
+# → subject=CN=gv-webstack.duckdns.org
+# → issuer=C=US, O=Let's Encrypt, CN=R13
+```
+
+Test HTTPS:
+```powershell
+curl -sk https://gv-webstack.duckdns.org/api/user
+# → {"name":"Geert Vuurstaek"}
+```
 
 ---
 

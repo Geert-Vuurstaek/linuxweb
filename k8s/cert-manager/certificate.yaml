@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gv-webstack-tls
+  namespace: gv-webstack
+spec:
+  secretName: gv-webstack-tls
+  issuerRef:
+    name: cert-manager-webhook-duckdns-production
+    kind: ClusterIssuer
+    group: cert-manager.io
+  commonName: gv-webstack.duckdns.org
+  dnsNames:
+    - gv-webstack.duckdns.org
+  duration: 2160h    # 90 days
+  renewBefore: 720h  # 30 days

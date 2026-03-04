@@ -5,9 +5,31 @@ metadata:
   namespace: gv-webstack
   annotations:
     nginx.ingress.kubernetes.io/load-balance: random
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - gv-webstack.duckdns.org
+      secretName: gv-webstack-tls
   rules:
+    - host: gv-webstack.duckdns.org
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gv-api
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gv-frontend
+                port:
+                  number: 80
     - host: gv.local
       http:
         paths:

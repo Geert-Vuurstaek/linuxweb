@@ -83,6 +83,28 @@ Write-Host "[INFO] Install ArgoCD..."
 & $vagrantCmd ssh $Master -c "kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
 if ($LASTEXITCODE -ne 0) { throw "Installatie ArgoCD mislukt." }
 
+Write-Host "[INFO] Install cert-manager..."
+& $vagrantCmd ssh $Master -c "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.1/cert-manager.yaml"
+if ($LASTEXITCODE -ne 0) { throw "Installatie cert-manager mislukt." }
+
+Write-Host "[INFO] Wachten op cert-manager readiness..."
+& $vagrantCmd ssh $Master -c "kubectl -n cert-manager rollout status deployment/cert-manager --timeout=180s"
+& $vagrantCmd ssh $Master -c "kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=180s"
+& $vagrantCmd ssh $Master -c "kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=180s"
+if (-not (Wait-ServiceEndpoints -Namespace "cert-manager" -Service "cert-manager-webhook" -TimeoutSeconds 120)) {
+    Write-Host "[WARN] cert-manager webhook heeft nog geen endpoints."
+}
+
+Write-Host "[INFO] Install Helm (voor DuckDNS webhook)..."
+& $vagrantCmd ssh $Master -c "curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] Helm installatie mislukt." }
+
+Write-Host "[INFO] Install DuckDNS webhook voor cert-manager..."
+& $vagrantCmd ssh $Master -c "git clone https://github.com/ebrianne/cert-manager-webhook-duckdns.git /tmp/duckdns-webhook 2>/dev/null || true"
+& $vagrantCmd ssh $Master -c "helm upgrade --install cert-manager-webhook-duckdns /tmp/duckdns-webhook/deploy/cert-manager-webhook-duckdns --namespace cert-manager --set duckdns.token=58d97c9c-c045-45bd-9f4f-8eebc545e225 --set clusterIssuer.production.create=true --set clusterIssuer.staging.create=false --set clusterIssuer.email=geertvuurstaek1@gmail.com --set logLevel=2"
+if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] DuckDNS webhook installatie mislukt; HTTPS werkt mogelijk niet." }
+Start-Sleep -Seconds 10
+
 Write-Host "[INFO] Deploy lokale manifests..."
 & $vagrantCmd ssh $Master -c "kubectl apply -f ${RemoteK8sPath}/namespace.yaml"
 if ($LASTEXITCODE -ne 0) { throw "Apply namespace.yaml mislukt." }
@@ -90,6 +112,21 @@ if ($LASTEXITCODE -ne 0) { throw "Apply namespace.yaml mislukt." }
 if ($LASTEXITCODE -ne 0) { throw "Apply argocd manifests mislukt." }
 & $vagrantCmd ssh $Master -c "kubectl apply -f ${RemoteK8sPath}/prometheus/"
 if ($LASTEXITCODE -ne 0) { throw "Apply prometheus manifests mislukt." }
+
+Write-Host "[INFO] Deploy cert-manager certificates..."
+$certApplied = $false
+for ($i = 1; $i -le 5; $i++) {
+    & $vagrantCmd ssh $Master -c "kubectl apply --request-timeout=15s -f ${RemoteK8sPath}/cert-manager/"
+    if ($LASTEXITCODE -eq 0) {
+        $certApplied = $true
+        break
+    }
+    Write-Host "[WARN] cert-manager certificates apply nog niet gelukt (poging $i/5), opnieuw proberen in 10s..."
+    Start-Sleep -Seconds 10
+}
+if (-not $certApplied) {
+    Write-Host "[WARN] cert-manager certificates konden niet worden toegepast; HTTPS werkt mogelijk niet."
+}
 
 $metallbApplied = $false
 for ($i = 1; $i -le 5; $i++) {
@@ -155,6 +192,19 @@ if (-not $ingressApplied) {
     Write-Host "[INFO] Herstel ingress-nginx manifests (incl. admission webhook)..."
     & $vagrantCmd ssh $Master -c "kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.0/deploy/static/provider/cloud/deploy.yaml"
     if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] Herstellen ingress-nginx webhook config mislukte; cluster werkt verder zonder die validatie." }
+}
+
+Write-Host "[INFO] DuckDNS IP updaten naar MetalLB ingress IP..."
+$ingressIp = (& $vagrantCmd ssh $Master -c "kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}'").Trim()
+if (-not [string]::IsNullOrWhiteSpace($ingressIp)) {
+    try {
+        $duckResult = (Invoke-RestMethod "https://www.duckdns.org/update?domains=gv-webstack&token=58d97c9c-c045-45bd-9f4f-8eebc545e225&ip=$ingressIp")
+        Write-Host "[INFO] DuckDNS update: $duckResult (IP: $ingressIp)"
+    } catch {
+        Write-Host "[WARN] DuckDNS update mislukt: $_"
+    }
+} else {
+    Write-Host "[WARN] Kon ingress external IP niet ophalen voor DuckDNS."
 }
 
 Write-Host "[INFO] Alle manifests zijn uitgerold."
