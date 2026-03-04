@@ -321,6 +321,18 @@ vagrant up
 > vagrant ssh k8s-master -- kubectl get pods -A
 > ```
 
+> **Let op:** De port-forwards in de VM overleven `suspend`/`resume`, maar de SSH tunnels op Windows vallen weg. Na resume opnieuw starten:
+> ```powershell
+> cd vagrant
+>
+> # Grafana tunnel (http://localhost:13000)
+> ssh -o StrictHostKeyChecking=no -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 13000:localhost:13000 vagrant@127.0.0.1
+>
+> # ArgoCD tunnel (https://localhost:18081)
+> ssh -o StrictHostKeyChecking=no -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 18081:localhost:18081 vagrant@127.0.0.1
+> ```
+> De webstack (`gv.local` / `gv-webstack.duckdns.org`) werkt direct na resume via MetalLB + ingress.
+
 | Commando | Effect | Snelheid hervatten |
 |----------|--------|--------------------|
 | `vagrant suspend` | RAM opslaan naar disk | Snel (~10s) |
