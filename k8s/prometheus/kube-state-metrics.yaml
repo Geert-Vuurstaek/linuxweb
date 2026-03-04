@@ -89,8 +89,6 @@ spec:
       labels:
         app: kube-state-metrics
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: k8s-worker2
       serviceAccountName: kube-state-metrics
       containers:
         - name: kube-state-metrics
