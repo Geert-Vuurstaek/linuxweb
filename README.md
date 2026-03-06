@@ -116,11 +116,11 @@ Je ziet de naam uit de database en de container hostname.
 ### Prometheus (monitoring)
 Port-forward opzetten vanuit de `vagrant/` map:
 ```powershell
-# Terminal 1: port-forward in de VM
-vagrant ssh k8s-master -- kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/gv-prometheus 19090:9090
+# Terminal 1: port-forward in de VM (draait als background process)
+vagrant ssh k8s-master -- "nohup kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/gv-prometheus 19090:9090 > /tmp/pf-prom.log 2>&1 & sleep 2 ; ss -lntp | grep 19090"
 
 # Terminal 2: SSH tunnel naar localhost (vanuit vagrant/ map)
-ssh -o StrictHostKeyChecking=no -i ".vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 19090:localhost:19090 vagrant@127.0.0.1
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o PubkeyAcceptedKeyTypes=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 19090:localhost:19090 vagrant@127.0.0.1
 ```
 Open: **http://localhost:19090/targets**
 
@@ -132,11 +132,11 @@ Verwachte targets (alle UP):
 ### Grafana (dashboards)
 Port-forward opzetten vanuit de `vagrant/` map:
 ```powershell
-# Terminal 1: port-forward in de VM
-vagrant ssh k8s-master -- kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/grafana 13000:3000
+# Terminal 1: port-forward in de VM (draait als background process)
+vagrant ssh k8s-master -- "nohup kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/grafana 13000:3000 > /tmp/pf-grafana.log 2>&1 & sleep 2 ; ss -lntp | grep 13000"
 
 # Terminal 2: SSH tunnel naar localhost (vanuit vagrant/ map)
-ssh -o StrictHostKeyChecking=no -i "<absoluut-pad>/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 13000:localhost:13000 vagrant@127.0.0.1
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o PubkeyAcceptedKeyTypes=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 13000:localhost:13000 vagrant@127.0.0.1
 ```
 Open: **http://localhost:13000**
 
@@ -152,11 +152,11 @@ Het "GV Kubernetes Cluster" dashboard opent automatisch met:
 
 ### ArgoCD (GitOps)
 ```powershell
-# Terminal 1: port-forward in de VM
-vagrant ssh k8s-master -- kubectl port-forward --address 0.0.0.0 -n argocd svc/argocd-server 18081:443
+# Terminal 1: port-forward in de VM (draait als background process)
+vagrant ssh k8s-master -- "nohup kubectl port-forward --address 0.0.0.0 -n argocd svc/argocd-server 18081:443 > /tmp/pf-argocd.log 2>&1 & sleep 2 ; ss -lntp | grep 18081"
 
 # Terminal 2: SSH tunnel naar localhost (vanuit vagrant/ map)
-ssh -o StrictHostKeyChecking=no -i ".vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 18081:localhost:18081 vagrant@127.0.0.1
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o PubkeyAcceptedKeyTypes=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 18081:localhost:18081 vagrant@127.0.0.1
 ```
 Open: **https://localhost:18081**
 
@@ -171,10 +171,12 @@ vagrant ssh k8s-master -- "kubectl -n argocd get secret argocd-initial-admin-sec
 
 ## Demo — Naam aanpassen in de database
 
-### 1. Huidige naam bekijken
-Open http://gv.local — de naam "Geert Vuurstaek" wordt getoond.
+> Dit toont aan dat de API **live** data uit PostgreSQL leest — geen restart nodig.
 
-Of via de API:
+### 1. Huidige naam bekijken
+Open http://gv.local of https://gv-webstack.duckdns.org — de naam "Geert Vuurstaek" wordt getoond.
+
+Controleer via de API:
 ```powershell
 curl http://gv.local/api/user
 # → {"user":"Geert Vuurstaek"}
@@ -182,11 +184,19 @@ curl http://gv.local/api/user
 
 ### 2. Naam wijzigen in PostgreSQL
 ```powershell
-vagrant ssh k8s-master -- kubectl exec -n gv-webstack deploy/gv-postgres -- psql -U gv_user -d gv_db -c "UPDATE users SET name='Demo Gebruiker' WHERE id=1;"
+# Helper-functie (kopieer deze one-liner 1x in je terminal):
+function Run-SQL($query) { $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($query)) ; vagrant ssh k8s-master -- "echo $b64 | base64 -d | kubectl exec -i -n gv-webstack deploy/gv-postgres -- psql -U gv_user -d gv_db" }
+
+# Naam wijzigen:
+Run-SQL "UPDATE users SET name='Demo Gebruiker' WHERE id=1;"
+# → UPDATE 1
 ```
 
+> **Waarom base64?** Quotes overleven niet door de lagen PowerShell → Vagrant → Bash → psql.
+> De helper-functie `Run-SQL` encodeert de query als base64 en decodeert in Linux.
+
 ### 3. Resultaat controleren
-Refresh http://gv.local — de nieuwe naam verschijnt direct (geen restart nodig, de API leest live uit de database).
+Refresh de browser — de nieuwe naam verschijnt **direct** (live database read, geen pod restart).
 
 ```powershell
 curl http://gv.local/api/user
@@ -195,7 +205,15 @@ curl http://gv.local/api/user
 
 ### 4. Naam terugzetten
 ```powershell
-vagrant ssh k8s-master -- kubectl exec -n gv-webstack deploy/gv-postgres -- psql -U gv_user -d gv_db -c "UPDATE users SET name='Geert Vuurstaek' WHERE id=1;"
+Run-SQL "UPDATE users SET name='Geert Vuurstaek' WHERE id=1;"
+```
+
+### 5. Bonus: data bekijken
+```powershell
+Run-SQL "SELECT * FROM users;"
+#  id |      name
+# ----+------------------
+#   1 | Geert Vuurstaek
 ```
 
 ---
@@ -321,23 +339,56 @@ vagrant up
 > vagrant ssh k8s-master -- kubectl get pods -A
 > ```
 
-> **Let op:** De port-forwards in de VM overleven `suspend`/`resume`, maar de SSH tunnels op Windows vallen weg. Na resume opnieuw starten:
+> **Let op:** Na `suspend`/`resume` vallen zowel de port-forwards in de VM als de SSH tunnels op Windows weg. Herstart ze als volgt:
+>
+> **Stap 1 — Port-forwards herstarten in de VM:**
 > ```powershell
 > cd vagrant
->
-> # Grafana tunnel (http://localhost:13000)
-> ssh -o StrictHostKeyChecking=no -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 13000:localhost:13000 vagrant@127.0.0.1
->
-> # ArgoCD tunnel (https://localhost:18081)
-> ssh -o StrictHostKeyChecking=no -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 18081:localhost:18081 vagrant@127.0.0.1
+> vagrant ssh k8s-master -- "nohup kubectl port-forward --address 0.0.0.0 -n argocd svc/argocd-server 18081:443 > /tmp/pf-argocd.log 2>&1 & nohup kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/grafana 13000:3000 > /tmp/pf-grafana.log 2>&1 & nohup kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/gv-prometheus 19090:9090 > /tmp/pf-prom.log 2>&1 & sleep 3 ; ss -lntp | grep -E '18081|13000|19090'"
 > ```
-> De webstack (`gv.local` / `gv-webstack.duckdns.org`) werkt direct na resume via MetalLB + ingress.
+>
+> **Stap 2 — SSH tunnel starten op Windows (in een apart terminal):**
+> ```powershell
+> cd vagrant
+> ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o PubkeyAcceptedKeyTypes=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 18081:localhost:18081 -L 13000:localhost:13000 -L 19090:localhost:19090 vagrant@127.0.0.1
+> ```
+>
+> Daarna beschikbaar:
+> - **Grafana**: http://localhost:13000 (admin / admin)
+> - **ArgoCD**: https://localhost:18081
+> - **Prometheus**: http://localhost:19090
+>
+> De webstack (`gv.local` / `gv-webstack.duckdns.org`) werkt direct na resume via MetalLB + ingress — daar zijn geen port-forwards voor nodig.
 
 | Commando | Effect | Snelheid hervatten |
 |----------|--------|--------------------|
 | `vagrant suspend` | RAM opslaan naar disk | Snel (~10s) |
 | `vagrant halt` | Graceful shutdown | Langzamer (~1-2 min) |
 | `vagrant destroy -f` | VMs volledig verwijderen | Moet opnieuw opzetten |
+
+---
+
+## Troubleshooting
+
+### Worker node NotReady
+Als een worker `NotReady` wordt (bv. na resume of netwerkproblemen):
+```powershell
+# Check welke node NotReady is
+vagrant ssh k8s-master -- kubectl get nodes
+
+# Herstart containerd + kubelet op de betreffende worker
+vagrant ssh k8s-worker2 -- "sudo systemctl restart containerd ; sudo systemctl restart kubelet"
+
+# Wacht ~15 sec en check opnieuw
+vagrant ssh k8s-master -- kubectl get nodes
+```
+
+### Kernel modules na reboot
+Als Flannel crasht na reboot (`br_netfilter` module mist):
+```powershell
+vagrant ssh <worker> -- "sudo modprobe br_netfilter overlay ; sudo systemctl restart kubelet"
+```
+Dit is normaal al persistent via `/etc/modules-load.d/k8s.conf` (ingesteld door `provision.sh`).
 
 ---
 
