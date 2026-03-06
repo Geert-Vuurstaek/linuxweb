@@ -60,6 +60,11 @@ sed -i.bak '/ swap / s/^/#/' /etc/fstab
 echo "[INFO] Swap disabled."
 
 # --- Load required kernel modules and configure sysctl ---
+cat <<EOF | tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
 modprobe overlay
 modprobe br_netfilter
 
