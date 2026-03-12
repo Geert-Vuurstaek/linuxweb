@@ -234,6 +234,7 @@ Uitleg laatste commando:
 
 #### `k8s/webstack/api-deployment.yaml`
 - `replicas: 2`: schaalvereiste voor API.
+- `strategy.rollingUpdate.maxSurge: 0` en `maxUnavailable: 1`: voorkomt extra tijdelijke pod die niet schedulebaar is bij strikte anti-affinity op 2 workers.
 - `podAntiAffinity`: probeert pods op verschillende nodes te plaatsen.
 - `env` + `secretKeyRef`: credentials uit Secret, niet hardcoded in image.
 - `livenessProbe` + `readinessProbe` op `/health`: auto-restart en correcte traffic gating.
@@ -244,6 +245,7 @@ Uitleg laatste commando:
 
 #### `k8s/webstack/frontend-deployment.yaml`
 - `replicas: 2`: frontend schaalbaar.
+- `strategy.rollingUpdate.maxSurge: 0` en `maxUnavailable: 1`: rollout blijft mogelijk zonder `Pending` pods bij verplichte spreiding.
 - `imagePullPolicy: IfNotPresent`: gebruikt lokale geladen image op nodes.
 
 #### `k8s/webstack/postgres-deployment.yaml`
