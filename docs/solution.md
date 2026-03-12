@@ -140,10 +140,15 @@ Uitleg parameters:
 - `-o wide`: extra kolommen (node, pod IP, enz.) om spreiding te tonen.
 
 Belangrijke nuance:
-- In de huidige manifesten staat `preferredDuringSchedulingIgnoredDuringExecution` (voorkeur), geen harde verplichting.
-- Daardoor mogen beide API pods op dezelfde worker terechtkomen als de scheduler dat op dat moment optimaal vindt.
+- In de huidige manifesten staat `requiredDuringSchedulingIgnoredDuringExecution` (harde spreidingsregel) voor API en frontend.
+- Met 2 replicas en 2 workers wordt spreiding afgedwongen op `kubernetes.io/hostname`.
 
-Demo-tip om spreiding zichtbaar te maken zonder manifestwijziging:
+Controlecommando voor mondeling bewijs:
+```powershell
+vagrant ssh k8s-master -- kubectl get pods -n gv-webstack -o wide
+```
+
+Fallback demo-tip (enkel gebruiken als je tijdelijk wil forceren/herplannen):
 ```powershell
 # 1) Tijdelijk worker1 unschedulable maken
 vagrant ssh k8s-master -- kubectl cordon k8s-worker1
@@ -216,6 +221,37 @@ Verwacht resultaat:
 - `Grafana HTTP 200`
 - `ArgoCD HTTPS 200`
 
+### Demo — Healthcheck die API automatisch herstart (mondeling bewijs)
+Deze demo toont expliciet dat liveness probe een unhealthy container automatisch herstart.
+
+1) Baseline (restarts tellen):
+```powershell
+vagrant ssh k8s-master -- "kubectl get pods -n gv-webstack -l app=gv-api -o custom-columns=NAME:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount,STATUS:.status.phase"
+```
+
+2) Tijdelijk liveness pad fout zetten (bewuste failure):
+```powershell
+vagrant ssh k8s-master -- "kubectl patch deployment gv-api -n gv-webstack --type='json' -p='[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/livenessProbe/httpGet/path\",\"value\":\"/health-broken\"}]'"
+```
+
+3) Bewijs van restart tonen:
+```powershell
+vagrant ssh k8s-master -- "kubectl get pods -n gv-webstack -l app=gv-api -w"
+$pod = (vagrant ssh k8s-master -- "kubectl get pods -n gv-webstack -l app=gv-api -o jsonpath='{.items[0].metadata.name}'").Trim()
+vagrant ssh k8s-master -- "kubectl describe pod -n gv-webstack $pod" | Select-String -Pattern "Liveness probe failed|Killing|Unhealthy"
+```
+
+4) Meteen terug correct zetten (rollback):
+```powershell
+vagrant ssh k8s-master -- "kubectl patch deployment gv-api -n gv-webstack --type='json' -p='[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/livenessProbe/httpGet/path\",\"value\":\"/health\"}]'"
+vagrant ssh k8s-master -- "kubectl rollout status deployment/gv-api -n gv-webstack --timeout=180s"
+```
+
+5) Eindcontrole:
+```powershell
+vagrant ssh k8s-master -- "kubectl get pods -n gv-webstack -l app=gv-api -o custom-columns=NAME:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount,STATUS:.status.phase"
+```
+
 ---
 
 ## 5) Configuratiebestanden en uitleg van belangrijke lijnen
@@ -255,11 +291,33 @@ Verwacht resultaat:
 
 ### 5.5 Kubernetes webstack
 
+
 #### `k8s/webstack/api-deployment.yaml`
 - `replicas: 2`: schaalvereiste voor API.
 - `strategy.rollingUpdate.maxSurge: 0` en `maxUnavailable: 1`: voorkomt extra tijdelijke pod die niet schedulebaar is bij strikte anti-affinity op 2 workers.
 - `podAntiAffinity`: probeert pods op verschillende nodes te plaatsen.
 - `env` + `secretKeyRef`: credentials uit Secret, niet hardcoded in image.
+- **Healthcheck bewijs (livenessProbe & readinessProbe):**
+
+```yaml
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 6
+```
+
 - `livenessProbe` + `readinessProbe` op `/health`: auto-restart en correcte traffic gating.
 
 #### `k8s/webstack/api-service.yaml`
@@ -364,6 +422,33 @@ Commando's in beeld: SQL update + `curl.exe -sk https://gv-webstack.duckdns.org/
 ![Screenshot 05 - db live update](screenshots/05-db-live-update.png)
 
 Bijschrift: naamwijziging in PostgreSQL wordt na refresh direct zichtbaar in API/frontend.
+
+### Screenshot 05b — Live frontend update proof
+Commando's in beeld: officiële GitOps workflow voor een frontend-wijziging
+
+```powershell
+# 1. Pas frontend/index.html lokaal aan (bijvoorbeeld: milestone naar Isengard)
+notepad ../frontend/index.html
+# Zoek de regel:
+#   <h1><span id="user">Loading...</span> has reached milestone 2!</h1>
+# en wijzig naar:
+#   <h1><span id="user">Loading...</span> is going to Isengard</h1>
+
+# 2. Build en distribute de nieuwe frontend image naar alle nodes
+cd vagrant
+./build_and_distribute_images.ps1
+
+# 3. Commit en push de wijziging naar GitHub (voor ArgoCD en traceerbaarheid)
+cd ..
+git add frontend/index.html
+git commit -m "Update frontend milestone text to Isengard"
+git push origin main
+
+# 4. Wacht tot ArgoCD auto-sync uitvoert (of forceer sync via UI)
+# Refresh de browser op https://gv-webstack.duckdns.org
+```
+
+Bijschrift: tekstwijziging in de frontend is direct zichtbaar na refresh, image is opnieuw gebouwd en uitgerold via build_and_distribute_images.ps1, deployment gebeurt via GitOps/ArgoCD.
 
 ### Screenshot 06 — TLS certificaat status
 Commando in beeld: `kubectl get certificate -n gv-webstack`

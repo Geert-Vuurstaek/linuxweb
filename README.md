@@ -107,6 +107,7 @@ Je ziet de naam uit de database en de container hostname.
 |-----|-------------|
 | https://gv-webstack.duckdns.org | Frontend via HTTPS (Let's Encrypt) |
 | https://gv-webstack.duckdns.org/api/user | API: naam uit PostgreSQL (HTTPS) |
+| https://gv-webstack.duckdns.org/api/container | API: container hostname (HTTPS) |
 | https://gv-webstack.duckdns.org/api/health | API: health status (HTTPS) |
 | http://gv.local | Frontend (HTTP fallback) |
 | http://gv.local/api/user | API: naam uit PostgreSQL |
@@ -389,6 +390,53 @@ Als Flannel crasht na reboot (`br_netfilter` module mist):
 vagrant ssh <worker> -- "sudo modprobe br_netfilter overlay ; sudo systemctl restart kubelet"
 ```
 Dit is normaal al persistent via `/etc/modules-load.d/k8s.conf` (ingesteld door `provision.sh`).
+
+### Troubleshooting — ArgoCD lokaal niet bereikbaar (18081):
+
+> 1. Controleer of er maar één SSH tunnel actief is naar 18081:
+>    ```powershell
+>    netstat -ano | findstr :18081
+>    ```
+>    Stop alle ssh.exe processen die poort 18081 gebruiken:
+>    ```powershell
+>    Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '18081:localhost:18081' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+>    ```
+>    Start daarna de SSH tunnel opnieuw.
+> 
+> 2. Controleer of de port-forward op de VM draait:
+>    ```powershell
+>    vagrant ssh k8s-master -- "ss -lntp | grep 18081"
+>    ```
+>    Je moet een LISTEN zien op 0.0.0.0:18081.
+> 
+> 3. Controleer of de ArgoCD pod en service daadwerkelijk draaien:
+>    ```powershell
+>    vagrant ssh k8s-master -- kubectl get pods -n argocd
+>    vagrant ssh k8s-master -- kubectl get svc -n argocd
+>    ```
+>    Pod moet Running zijn, service moet op poort 443 staan.
+> 
+> 4. Test met curl:
+>    ```powershell
+>    curl.exe -k https://localhost:18081
+>    ```
+>    Accepteer SSL warnings in de browser.
+> 
+> 5. Start de SSH tunnel in een nieuwe terminal als je net processen hebt gestopt.
+> 
+> 6. Controleer firewall/antivirus (poort 18081 mag niet geblokkeerd zijn).
+> 
+> Zo werkt https://localhost:18081 weer voor ArgoCD.
+
+> **Let op:** Port-forwards kunnen elkaar beïnvloeden. Start bij troubleshooting alleen de port-forward voor de app die je wilt testen (bv. ArgoCD), en voeg de andere pas toe als alles werkt. Soms werkt het stabieler om port-forwards één voor één te starten en te testen.
+> 
+> Bij SSL/TLS errors in curl of browser:
+> - Accepteer SSL warnings in de browser.
+> - Gebruik incognito/private mode om caching te omzeilen.
+> - Test met curl.exe -k om te zien of de endpoint bereikbaar is.
+> - Herstart port-forward en SSH tunnel als je een handshake error krijgt.
+> 
+> Zo voorkom je conflicten en kun je snel troubleshooten per app.
 
 ---
 
