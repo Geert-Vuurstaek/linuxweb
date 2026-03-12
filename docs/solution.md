@@ -105,23 +105,23 @@ Hosts file (Windows, admin):
 
 ### Stap 5 — Basisfunctionaliteit testen
 ```powershell
-curl -sk https://gv-webstack.duckdns.org/api/user
-curl -sk https://gv-webstack.duckdns.org/api/container
-curl -sk https://gv-webstack.duckdns.org/api/health
+curl.exe -sk https://gv-webstack.duckdns.org/api/user
+curl.exe -sk https://gv-webstack.duckdns.org/api/container
+curl.exe -sk https://gv-webstack.duckdns.org/api/health
 ```
 
 Uitleg:
 - `/api/user`: haalt naam uit PostgreSQL.
 - `/api/container`: toont hostname/container-ID van API pod.
 - `/api/health`: endpoint voor probes en snelle beschikbaarheidscontrole.
-- `-k`: laat `curl` doorgaan bij lokale TLS-validatieproblemen tijdens demo's.
+- `-k`: laat `curl.exe` doorgaan bij lokale TLS-validatieproblemen tijdens demo's.
 
 ### Stap 6 — Naam in database live wijzigen (bewijs dynamische data)
 ```powershell
 function Run-SQL($query) { $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($query)) ; vagrant ssh k8s-master -- "echo $b64 | base64 -d | kubectl exec -i -n gv-webstack deploy/gv-postgres -- psql -U gv_user -d gv_db" }
 
 Run-SQL "UPDATE users SET name='Demo Gebruiker' WHERE id=1;"
-curl -sk https://gv-webstack.duckdns.org/api/user
+curl.exe -sk https://gv-webstack.duckdns.org/api/user
 Run-SQL "UPDATE users SET name='Geert Vuurstaek' WHERE id=1;"
 ```
 
@@ -192,6 +192,29 @@ Uitleg laatste commando:
 - `get secret argocd-initial-admin-secret`: leest het initieel admin secret.
 - `-o jsonpath='{.data.password}'`: haalt enkel het password veld op.
 - `| base64 -d`: decodeert van base64 naar leesbare tekst.
+
+### Snelle herstelprocedure (ArgoCD/Grafana lokaal niet bereikbaar)
+Gebruik dit als port-forwards of SSH tunnel wegvallen na `suspend`/`resume`.
+
+1) Herstart VM-side port-forwards:
+```powershell
+vagrant ssh k8s-master -- "nohup kubectl port-forward --address 0.0.0.0 -n argocd svc/argocd-server 18081:443 > /tmp/pf-argocd.log 2>&1 & nohup kubectl port-forward --address 0.0.0.0 -n gv-monitoring svc/grafana 13000:3000 > /tmp/pf-grafana.log 2>&1 & sleep 2 ; ss -lntp | grep -E '18081|13000'"
+```
+
+2) Start lokale SSH tunnel opnieuw:
+```powershell
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o PubkeyAcceptedKeyTypes=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 18081:localhost:18081 -L 13000:localhost:13000 vagrant@127.0.0.1
+```
+
+3) Snelle check:
+```powershell
+curl.exe -s -o NUL -w "Grafana HTTP %{http_code}`n" http://localhost:13000/login
+curl.exe -sk -o NUL -w "ArgoCD HTTPS %{http_code}`n" https://localhost:18081
+```
+
+Verwacht resultaat:
+- `Grafana HTTP 200`
+- `ArgoCD HTTPS 200`
 
 ---
 
@@ -329,14 +352,14 @@ Pagina in beeld: `https://gv-webstack.duckdns.org`
 Bijschrift: frontend toont naam en API container-ID via Ingress.
 
 ### Screenshot 04 — API endpoints
-Commando's in beeld: `curl -sk https://gv-webstack.duckdns.org/api/user` en `curl -sk https://gv-webstack.duckdns.org/api/container`
+Commando's in beeld: `curl.exe -sk https://gv-webstack.duckdns.org/api/user` en `curl.exe -sk https://gv-webstack.duckdns.org/api/container`
 
 ![Screenshot 04 - api user container](screenshots/04-api-user-container.png)
 
 Bijschrift: endpoint `/api/user` geeft naam, `/api/container` geeft container-ID.
 
 ### Screenshot 05 — Live database update proof
-Commando's in beeld: SQL update + `curl http://gv.local/api/user`
+Commando's in beeld: SQL update + `curl.exe -sk https://gv-webstack.duckdns.org/api/user`
 
 ![Screenshot 05 - db live update](screenshots/05-db-live-update.png)
 
