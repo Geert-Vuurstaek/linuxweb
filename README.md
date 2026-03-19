@@ -340,6 +340,8 @@ vagrant up
 > vagrant ssh k8s-master -- kubectl get pods -A
 > ```
 
+> **Aanbeveling:** Voor maximale stabiliteit bij Kubernetes-clusters is het beter om de VMs uit te zetten met `vagrant halt` en daarna weer op te starten met `vagrant up`. Dit voorkomt netwerk- en CNI-problemen (zoals Flannel CrashLoopBackOff of pods met status Unknown) die vaak ontstaan na een `suspend`/`resume`. Gebruik `suspend`/`resume` alleen voor korte pauzes en als je weet hoe je issues snel kunt oplossen.
+
 > **Let op:** Na `suspend`/`resume` vallen zowel de port-forwards in de VM als de SSH tunnels op Windows weg. Herstart ze als volgt:
 >
 > **Stap 1 — Port-forwards herstarten in de VM:**
@@ -370,6 +372,24 @@ vagrant up
 ---
 
 ## Troubleshooting
+
+### Troubleshooting — Flannel/CNI problemen na resume (worker pods Unknown)
+
+> Na een `vagrant resume` kan het voorkomen dat pods op een worker node de status "Unknown" krijgen en Flannel in CrashLoopBackOff gaat. Dit komt doordat kernel modules niet geladen zijn of de kubelet/containerd processen niet goed werken.
+>
+> **Oplossing:**
+> 1. Herstart kernel modules en kubelet/containerd op de betreffende worker:
+>    ```powershell
+>    vagrant ssh k8s-worker2 -- "sudo modprobe br_netfilter overlay ; sudo systemctl restart containerd ; sudo systemctl restart kubelet"
+>    ```
+>    (Herhaal voor andere workers indien nodig.)
+>
+> 2. Wacht 20 seconden en controleer de status:
+>    ```powershell
+>    vagrant ssh k8s-master -- kubectl get pods -A -o wide
+>    ```
+>
+> Daarna komen Flannel en de pods op de worker weer op "Running".
 
 ### Troubleshooting — Grafana lokaal niet bereikbaar (13000):
 
