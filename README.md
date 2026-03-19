@@ -371,6 +371,45 @@ vagrant up
 
 ## Troubleshooting
 
+### Troubleshooting — Grafana lokaal niet bereikbaar (13000):
+
+> 1. Controleer of er maar één SSH tunnel actief is naar 13000:
+>    ```powershell
+>    netstat -ano | findstr :13000
+>    ```
+>    Stop alle ssh.exe processen die poort 13000 gebruiken:
+>    ```powershell
+>    Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '13000:localhost:13000' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+>    ```
+>    Start daarna de SSH tunnel opnieuw:
+>    ```powershell
+>    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -o PubkeyAcceptedKeyTypes=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa -i "C:/dev/examen-project/vagrant/.vagrant/machines/k8s-master/virtualbox/private_key" -p 2222 -N -L 13000:localhost:13000 vagrant@127.0.0.1
+>    ```
+>
+> 2. Controleer of de port-forward op de VM draait:
+>    ```powershell
+>    vagrant ssh k8s-master -- "ss -lntp | grep 13000"
+>    ```
+>    Je moet een LISTEN zien op 0.0.0.0:13000.
+>
+> 3. Controleer of de Grafana pod en service daadwerkelijk draaien:
+>    ```powershell
+>    vagrant ssh k8s-master -- kubectl get pods -n gv-monitoring
+>    vagrant ssh k8s-master -- kubectl get svc -n gv-monitoring
+>    ```
+>    Pod moet Running zijn, service moet op poort 3000 staan.
+>
+> 4. Test met curl:
+>    ```powershell
+>    curl http://localhost:13000
+>    ```
+>
+> 5. Controleer firewall/antivirus (poort 13000 mag niet geblokkeerd zijn).
+>
+> Zo werkt http://localhost:13000 weer voor Grafana.
+
+> **Tip:** Zet port-forwards altijd één voor één op en test direct met `curl` of in de browser. Zo voorkom je poortconflicten en zie je meteen welke service werkt. Vooral na een VM-restart of bij problemen is dit de meest stabiele aanpak.
+
 ### Worker node NotReady
 Als een worker `NotReady` wordt (bv. na resume of netwerkproblemen):
 ```powershell
